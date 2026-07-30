@@ -6,15 +6,12 @@ FastAPI가 pandas로 만든 최종 데이터를 API로 제공하고, 프런트�
 fetch()로 그 데이터를 받아 지도·대시보드를 그리는 구조로 바꿨다.
 
 실행:
-  uvicorn app.main:app --reload --port 8000
+  uv run uvicorn main:app --reload --port 8000
   브라우저에서 http://127.0.0.1:8000 접속
 """
 
 import math
-import sys
 import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from fastapi import FastAPI, Query
@@ -27,7 +24,8 @@ from analysis_lib import (
     compute_regression_models, get_migration_insights,
 )
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# main.py가 이제 프로젝트 루트에 있으므로, 자기 자신의 위치가 곧 BASE_DIR
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 app = FastAPI(
