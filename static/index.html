@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>대구 영유아 돌봄 인프라 분석</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --navy: #14202B;
+    --navy-2: #1D2E3D;
+    --paper: #F4F6F5;
+    --line: #D9DFDD;
+    --ink: #14202B;
+    --sub: #5B6B70;
+    --accent: #C8622D;
+    --c-full: #8B0000;
+    --c-double: #FF4500;
+    --c-physical: #FFA500;
+    --c-quality: #4169E1;
+    --c-good: #2E8B57;
+    --c-na: #A9A9A9;
+    --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Pretendard', -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a{ color:inherit; }
+
+  header.top{
+    background:var(--navy); color:#fff; padding:22px 32px;
+    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  header.top .brand{ display:flex; align-items:baseline; gap:14px; }
+  header.top h1{ font-size:20px; margin:0; font-weight:700; letter-spacing:-0.01em; }
+  header.top .tag{ font-size:12px; color:#9FB1BC; font-family: var(--mono); }
+  header.top .meta{ font-size:12px; color:#9FB1BC; }
+
+  main{ max-width:1180px; margin:0 auto; padding:28px 24px 80px; }
+
+  /* ---- signature: 미스매치 4분면 매트릭스 ---- */
+  section.matrix-wrap{
+    display:grid; grid-template-columns: 1.1fr 0.9fr; gap:24px; margin-bottom:32px;
+  }
+  @media (max-width: 880px){ section.matrix-wrap{ grid-template-columns: 1fr; } }
+
+  .matrix-card{ background:#fff; border:1px solid var(--line); border-radius:4px; padding:22px 24px; }
+  .matrix-card h2{ font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub); margin:0 0 14px; font-weight:700; }
+
+  .quad-grid{
+    display:grid; grid-template-columns: 70px 1fr 1fr; grid-template-rows: 24px 1fr 1fr;
+    gap:6px; height:280px;
+  }
+  .axis-label{ font-size:11px; color:var(--sub); font-family:var(--mono); display:flex; align-items:center; justify-content:center; }
+  .axis-y{ writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); }
+  .quad{
+    border-radius:4px; padding:12px 14px; cursor:pointer; transition: transform .12s ease, box-shadow .12s ease;
+    display:flex; flex-direction:column; justify-content:space-between; position:relative; border: 1px solid transparent;
+  }
+  .quad:hover{ transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+  .quad.active{ border-color: var(--ink); }
+  .quad .count{ font-family:var(--mono); font-size:32px; font-weight:700; line-height:1; }
+  .quad .name{ font-size:13px; font-weight:600; margin-top:6px; }
+  .quad .desc{ font-size:11px; color:rgba(0,0,0,0.55); margin-top:2px; }
+
+  .q-good{ background:#E8F3EC; }
+  .q-good .count{ color:var(--c-good); }
+  .q-physical{ background:#FFF3E0; }
+  .q-physical .count{ color:#B36B00; }
+  .q-quality{ background:#EAF0FC; }
+  .q-quality .count{ color:var(--c-quality); }
+  .q-double{ background:#FFE9E0; }
+  .q-double .count{ color:#C53E00; }
+
+  .kpi-strip{ display:grid; grid-template-columns: repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .kpi{ background:#fff; padding:16px 18px; }
+  .kpi .label{ font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.06em; }
+  .kpi .value{ font-family:var(--mono); font-size:24px; font-weight:700; margin-top:4px; }
+  .kpi .value.na{ color:var(--c-full); }
+
+  /* ---- map ---- */
+  section.map-section{ margin-bottom:32px; }
+  .panel-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:10px; }
+  .panel-title h2{ font-size:16px; margin:0; font-weight:700; }
+  .filters{ display:flex; gap:8px; }
+  select{
+    font-family:'Pretendard',sans-serif; font-size:12px; padding:6px 10px; border:1px solid var(--line);
+    border-radius:4px; background:#fff; color:var(--ink);
+  }
+  #map{ height:480px; border:1px solid var(--line); border-radius:4px; }
+  .legend-row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:var(--sub); }
+  .legend-row span.dot{ width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:5px; }
+
+  /* ---- analysis cards ---- */
+  section.analysis{ display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:32px; }
+  @media (max-width: 880px){ section.analysis{ grid-template-columns:1fr; } }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:4px; padding:20px 22px; }
+  .card h3{ font-size:14px; margin:0 0 4px; font-weight:700; }
+  .card .sub{ font-size:12px; color:var(--sub); margin-bottom:14px; }
+
+  .weight-bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12px; }
+  .weight-bar-row .name{ width:150px; flex-shrink:0; color:var(--sub); }
+  .weight-bar-track{ flex:1; background:#EEF1F0; border-radius:3px; height:10px; overflow:hidden; }
+  .weight-bar-fill{ height:100%; background:var(--accent); }
+  .weight-bar-row .pct{ width:48px; text-align:right; font-family:var(--mono); }
+
+  table.reg-table{ width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  table.reg-table th, table.reg-table td{ padding:6px 4px; text-align:right; border-bottom:1px solid var(--line); }
+  table.reg-table th:first-child, table.reg-table td:first-child{ text-align:left; }
+  table.reg-table th{ color:var(--sub); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .sig-star{ color:var(--accent); font-weight:700; }
+  .r2-badge{ font-family:var(--mono); font-size:12px; background:#F1F0EC; padding:3px 8px; border-radius:3px; display:inline-block; margin-top:8px; }
+  .caveat{ font-size:11px; color:var(--sub); margin-top:10px; line-height:1.5; border-top:1px dashed var(--line); padding-top:8px; }
+
+  .diag-line{ font-size:12px; color:var(--sub); margin-top:4px; line-height:1.6; }
+  .diag-line b{ color:var(--ink); font-family:var(--mono); }
+
+  /* ---- insights ---- */
+  section.insights{ margin-bottom:32px; }
+  .insight-card{ background:#fff; border:1px solid var(--line); border-radius:4px; padding:22px 24px; margin-bottom:16px; }
+  .insight-card .eyebrow{ font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:.08em; font-weight:700; }
+  .insight-card h3{ font-size:16px; margin:4px 0 14px; font-weight:700; }
+  .insight-quote{
+    font-size:14px; line-height:1.7; padding:14px 16px; background:var(--paper);
+    border-left:3px solid var(--accent); margin:14px 0; font-weight:500;
+  }
+  table.insight-table{ width:100%; border-collapse:collapse; font-size:12.5px; margin:10px 0; }
+  table.insight-table th, table.insight-table td{ padding:7px 8px; text-align:right; border-bottom:1px solid var(--line); }
+  table.insight-table th:first-child, table.insight-table td:first-child{ text-align:left; }
+  table.insight-table th{ color:var(--sub); font-weight:600; font-size:11px; text-transform:uppercase; background:var(--paper); }
+  table.insight-table td.hot{ color:var(--c-full); font-weight:700; }
+  .insight-note{ font-size:12px; color:var(--sub); line-height:1.6; margin-top:6px; }
+  .policy-list{ margin:0; padding-left:18px; font-size:13px; line-height:1.9; }
+
+  footer{ text-align:center; font-size:11px; color:var(--sub); padding:24px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>대구 영유아 돌봄 인프라 분석</h1>
+    <span class="tag">FastAPI + pandas · 150개 읍면동</span>
+  </div>
+  <div class="meta" id="lastUpdated">데이터 로딩 중…</div>
+</header>
+
+<main>
+
+  <section class="matrix-wrap">
+    <div class="matrix-card">
+      <h2>미스매치 진단 매트릭스</h2>
+      <div class="quad-grid">
+        <div></div>
+        <div class="axis-label">충원율 높음</div>
+        <div class="axis-label">충원율 낮음</div>
+
+        <div class="axis-label axis-y">커버율 높음</div>
+        <div class="quad q-good" data-type="양호">
+          <div class="count" id="cnt-양호">–</div>
+          <div class="name">양호</div>
+          <div class="desc">공급 충분 · 이용 활발 → 현상 유지</div>
+        </div>
+        <div class="quad q-quality" data-type="질적미스매치">
+          <div class="count" id="cnt-질적미스매치">–</div>
+          <div class="name">질적 미스매치</div>
+          <div class="desc">시설 있는데 안 감 → 원인 조사 필요</div>
+        </div>
+
+        <div class="axis-label axis-y">커버율 낮음</div>
+        <div class="quad q-physical" data-type="물리적부족">
+          <div class="count" id="cnt-물리적부족">–</div>
+          <div class="name">물리적 부족</div>
+          <div class="desc">시설 적어 꽉 참 → 시설 확충</div>
+        </div>
+        <div class="quad q-double" data-type="이중취약">
+          <div class="count" id="cnt-이중취약">–</div>
+          <div class="name">이중 취약</div>
+          <div class="desc">공급도 이용도 낮음 → 종합 개입</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="matrix-card">
+      <h2>핵심 지표 요약</h2>
+      <div class="kpi-strip">
+        <div class="kpi"><div class="label">분석 대상 동</div><div class="value" id="kpi-total">–</div></div>
+        <div class="kpi"><div class="label">완전 공백</div><div class="value na" id="kpi-blank">–</div></div>
+        <div class="kpi"><div class="label">평균 커버율</div><div class="value" id="kpi-cover">–</div></div>
+        <div class="kpi"><div class="label">평균 충원율</div><div class="value" id="kpi-fill">–</div></div>
+      </div>
+      <p class="diag-line" style="margin-top:16px;">
+        수요(영유아인구) · 공급(정원) · 실현(현원) 3대 지표를 조합해 "시설이 없는 곳"과
+        "시설은 있는데 이용이 저조한 곳"을 구분합니다. 원인은 시설 품질·안전·접근성 등
+        다양할 수 있으며, 정량 데이터만으로 단정하지 않습니다.
+      </p>
+    </div>
+  </section>
+
+  <section class="map-section">
+    <div class="panel-title">
+      <h2>읍면동별 돌봄 인프라 지도</h2>
+      <div class="filters">
+        <select id="guFilter"><option value="">전체 구·군</option></select>
+        <select id="typeFilter">
+          <option value="">전체 유형</option>
+          <option value="완전공백">완전공백</option>
+          <option value="이중취약">이중취약</option>
+          <option value="물리적부족">물리적부족</option>
+          <option value="질적미스매치">질적미스매치</option>
+          <option value="양호">양호</option>
+          <option value="판정불가">판정불가</option>
+        </select>
+      </div>
+    </div>
+    <div id="map"></div>
+    <div class="legend-row">
+      <span><span class="dot" style="background:#8B0000"></span>완전공백</span>
+      <span><span class="dot" style="background:#FF4500"></span>이중취약</span>
+      <span><span class="dot" style="background:#FFA500"></span>물리적부족</span>
+      <span><span class="dot" style="background:#4169E1"></span>질적미스매치</span>
+      <span><span class="dot" style="background:#2E8B57"></span>양호</span>
+      <span><span class="dot" style="background:#A9A9A9"></span>판정불가</span>
+    </div>
+  </section>
+
+  <section class="analysis">
+    <div class="card">
+      <h3>6장 · 엔트로피 가중치 종합지수</h3>
+      <div class="sub">전체_커버율 + 체육밀도 → Min-Max 정규화 후 지역 간 변동성 기반 자동 가중</div>
+      <div id="weightBars"></div>
+      <div class="diag-line" id="entropyDiag"></div>
+    </div>
+
+    <div class="card">
+      <h3>7장 · 회귀분석 (검증 도구)</h3>
+      <div class="sub">종합지수가 임의가 아님을 통계적으로 확인</div>
+      <div id="regressionBody">불러오는 중…</div>
+    </div>
+  </section>
+
+  <section class="insights">
+    <div class="panel-title"><h2>핵심 인사이트 — 인구이동 데이터로 본 돌봄 공백</h2></div>
+    <div id="insightsBody">불러오는 중…</div>
+  </section>
+
+</main>
+
+<footer>대구 영유아 돌봄 인프라 분석 · 공공데이터(행안부/교육부/국토부/KOSIS) 기반 · 원인 단정이 아닌 진단 지표 제공</footer>
+
+<script>
+const TYPE_COLORS = {
+  "완전공백": "#8B0000", "이중취약": "#FF4500", "물리적부족": "#FFA500",
+  "질적미스매치": "#4169E1", "양호": "#2E8B57", "판정불가": "#A9A9A9",
+};
+
+let map, layerGroup, allDong = [];
+
+async function fetchJSON(url){ const r = await fetch(url); return r.json(); }
+
+function initMap(){
+  const daeguBounds = L.latLngBounds([35.60, 128.35], [36.30, 128.85]);
+  map = L.map('map', { maxBounds: daeguBounds.pad(0.05), maxBoundsViscosity: 1.0, minZoom: 11 }).fitBounds(daeguBounds);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  layerGroup = L.layerGroup().addTo(map);
+}
+
+function renderMarkers(rows){
+  layerGroup.clearLayers();
+  rows.forEach(r => {
+    if (r.lat == null || r.lng == null) return;
+    const color = TYPE_COLORS[r.미스매치_유형] || "#999";
+    const radius = Math.max(6, Math.min(22, (r.영유아인구_0_6세 || 0) / 80));
+    const cover = r.전체_커버율 != null ? (r.전체_커버율*100).toFixed(1)+"%" : "-";
+    const fill = r.전체_충원율 != null ? (r.전체_충원율*100).toFixed(1)+"%" : "-";
+    const price = r.평균제곱미터당가격_만원 != null ? Math.round(r.평균제곱미터당가격_만원).toLocaleString()+"만원/㎡" : "-";
+    const popup = `<b>${r.시군구명} ${r.읍면동명}</b><br>` +
+      `유형: <b>${r.미스매치_유형}</b><br>` +
+      `영유아인구(0-6세): ${(r.영유아인구_0_6세||0).toLocaleString()}명<br>` +
+      `유치원 ${r.유치원수||0}곳 · 어린이집 ${r.어린이집수||0}곳 · 체육시설 ${r.체육시설수||0}곳<br>` +
+      `전체 커버율: ${cover} · 충원율: ${fill}<br>` +
+      `아파트 평균가: ${price}`;
+    L.circleMarker([r.lat, r.lng], { radius, fillColor: color, color:'#333', weight:1, fillOpacity:0.78 })
+      .addTo(layerGroup).bindPopup(popup);
+  });
+}
+
+function populateGuFilter(rows){
+  const sel = document.getElementById('guFilter');
+  const gus = [...new Set(rows.map(r => r.시군구명))].sort();
+  gus.forEach(g => {
+    const o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o);
+  });
+}
+
+function applyFilters(){
+  const gu = document.getElementById('guFilter').value;
+  const type = document.getElementById('typeFilter').value;
+  let rows = allDong;
+  if (gu) rows = rows.filter(r => r.시군구명 === gu);
+  if (type) rows = rows.filter(r => r.미스매치_유형 === type);
+  renderMarkers(rows);
+}
+
+function highlightQuadrant(type){
+  document.querySelectorAll('.quad').forEach(q => q.classList.remove('active'));
+  const el = document.querySelector(`.quad[data-type="${type}"]`);
+  if (el) el.classList.add('active');
+  document.getElementById('typeFilter').value = type;
+  applyFilters();
+}
+
+async function loadSummary(){
+  const s = await fetchJSON('/api/summary');
+  document.getElementById('kpi-total').textContent = s.total_dong;
+  document.getElementById('kpi-blank').textContent = s.mismatch_type_counts['완전공백'] || 0;
+
+  const counts = s.mismatch_type_counts;
+  ['양호','질적미스매치','물리적부족','이중취약'].forEach(t => {
+    const el = document.getElementById('cnt-'+t);
+    if (el) el.textContent = counts[t] || 0;
+  });
+
+  const validGu = s.district_summary.filter(d => d.평균_전체커버율 != null);
+  const avgCover = validGu.reduce((a,d)=>a+d.평균_전체커버율,0) / validGu.length;
+  const avgFill = validGu.reduce((a,d)=>a+d.평균_전체충원율,0) / validGu.length;
+  document.getElementById('kpi-cover').textContent = (avgCover*100).toFixed(1)+"%";
+  document.getElementById('kpi-fill').textContent = (avgFill*100).toFixed(1)+"%";
+}
+
+async function loadEntropy(){
+  const e = await fetchJSON('/api/entropy');
+  const container = document.getElementById('weightBars');
+  container.innerHTML = '';
+  Object.entries(e.weights).forEach(([name, w]) => {
+    const pct = (w*100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'weight-bar-row';
+    row.innerHTML = `<div class="name">${name}</div>
+      <div class="weight-bar-track"><div class="weight-bar-fill" style="width:${pct}%"></div></div>
+      <div class="pct">${pct}%</div>`;
+    container.appendChild(row);
+  });
+  const d = e.diagnostics;
+  document.getElementById('entropyDiag').innerHTML =
+    `엔트로피 vs 단순평균 지수 상관: <b>${d.method_correlation_pearson.toFixed(3)}</b> (순위상관 <b>${d.method_correlation_spearman.toFixed(3)}</b>)<br>` +
+    `민감도 분석(가중치 ±20%, 200회): 평균 순위상관 <b>${d.sensitivity_mean_rank_corr.toFixed(3)}</b>, 최소 <b>${d.sensitivity_min_rank_corr.toFixed(3)}</b><br>` +
+    `→ 방법을 바꿔도, 가중치를 흔들어도 취약지역 순위는 안정적입니다. (군위군 ${d.n_gunwi_excluded}개 면은 별도 처리)`;
+}
+
+function renderRegModel(m){
+  const rows = m.coefficients.map(c => {
+    const sig = c.p_value < 0.01 ? '***' : c.p_value < 0.05 ? '**' : c.p_value < 0.1 ? '*' : '';
+    return `<tr><td>${c.variable}</td><td>${c.coef.toFixed(4)}</td><td>${c.standardized_coef.toFixed(3)}</td>
+      <td>${c.p_value < 0.001 ? c.p_value.toExponential(2) : c.p_value.toFixed(3)} <span class="sig-star">${sig}</span></td></tr>`;
+  }).join('');
+  return `<div style="margin-bottom:14px;">
+    <b style="font-size:12.5px;">${m.label}</b>
+    <table class="reg-table">
+      <thead><tr><th>변수</th><th>계수(B)</th><th>표준화(β)</th><th>p-value</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <span class="r2-badge">R² ${m.r_squared.toFixed(3)} · n=${m.n_obs}</span>
+    <div class="caveat">${m.caveat}</div>
+  </div>`;
+}
+
+async function loadRegression(){
+  const r = await fetchJSON('/api/regression');
+  document.getElementById('regressionBody').innerHTML =
+    renderRegModel(r.model_a) + renderRegModel(r.model_b);
+}
+
+function pct(x){ return (x*100).toFixed(1)+'%'; }
+
+function renderInsights(d){
+  const i1 = d.insight_1, i2 = d.insight_2, i3 = d.insight_3;
+
+  const reasonRows = i1.reason_table.map(r =>
+    `<tr><td>${r.사유}</td><td>${pct(r.영유아동반이동)}</td><td>${pct(r.전체이동)}</td><td>${r.배율.toFixed(2)}배</td></tr>`
+  ).join('');
+  const inflowRows = i1.top4_net_inflow.map(r =>
+    `<tr><td>${r.구} ${r.동}</td><td class="hot">+${r.순유입_3년.toLocaleString()}명</td></tr>`
+  ).join('');
+
+  const priorityRows = i2.priority_dongs.map(r =>
+    `<tr><td>${r.구} ${r.동}</td><td>${r.인구_0_6세.toLocaleString()}</td><td>${r.정원}</td><td>${r.현원}</td>
+     <td>${pct(r.충원율)}</td><td class="hot">+${r.순유입_3년.toLocaleString()}</td>
+     <td>${pct(r.주택사유비율)}</td><td>${r.아파트연식}년</td></tr>`
+  ).join('');
+
+  const groupRows = i3.groups.map(g =>
+    `<tr><td>${g.갈래}</td><td>${g.동수}개</td><td>${(g.순이동률_3년*100).toFixed(1)}%</td>
+     <td>${g.유휴정원.toLocaleString()}석</td><td>${g.아파트연식}년</td><td>${g.처방}</td></tr>`
+  ).join('');
+
+  document.getElementById('insightsBody').innerHTML = `
+    <div class="insight-card">
+      <div class="eyebrow">인사이트 1</div>
+      <h3>${i1.title}</h3>
+      <table class="insight-table">
+        <thead><tr><th>전입 사유</th><th>영유아 동반 이동</th><th>전체 이동</th><th>배율</th></tr></thead>
+        <tbody>${reasonRows}</tbody>
+      </table>
+      <table class="insight-table">
+        <thead><tr><th>3년 순유입 상위 4개 동</th><th>순유입</th></tr></thead>
+        <tbody>${inflowRows}</tbody>
+      </table>
+      <div class="insight-quote">"${i1.quote}"</div>
+      <div class="insight-note">${i1.note}</div>
+    </div>
+
+    <div class="insight-card">
+      <div class="eyebrow">인사이트 2</div>
+      <h3>${i2.title}</h3>
+      <table class="insight-table">
+        <thead><tr><th>행정동</th><th>0-6세</th><th>정원</th><th>현원</th><th>충원율</th><th>3년 순유입</th><th>주택사유</th><th>연식</th></tr></thead>
+        <tbody>${priorityRows}</tbody>
+      </table>
+      <div class="insight-quote">"${i2.quote}"</div>
+      <div class="insight-note">${i2.note}</div>
+    </div>
+
+    <div class="insight-card">
+      <div class="eyebrow">인사이트 3</div>
+      <h3>${i3.title}</h3>
+      <table class="insight-table">
+        <thead><tr><th>갈래</th><th>동수</th><th>3년 순이동률</th><th>유휴 정원</th><th>아파트 연식</th><th>처방</th></tr></thead>
+        <tbody>${groupRows}</tbody>
+      </table>
+      <div class="insight-quote">"${i3.quote}"</div>
+      ${i3.examples.map(e => `<div class="insight-note"><b>${e.구} ${e.동}</b> (3년 순이동률 ${(e.순이동률_3년*100).toFixed(1)}%${e.아파트연식?', 연식 '+e.아파트연식+'년':''}): ${e.설명}</div>`).join('')}
+    </div>
+
+    <div class="insight-card">
+      <div class="eyebrow">정책 제언</div>
+      <ol class="policy-list">${d.policy_recommendations.map(p => `<li>${p}</li>`).join('')}</ol>
+      <div class="caveat">${d.caveat}</div>
+      <div class="insight-note" style="margin-top:8px;">출처: ${d.source}</div>
+    </div>
+  `;
+}
+
+async function loadInsights(){
+  const d = await fetchJSON('/api/insights');
+  renderInsights(d);
+}
+
+async function main(){
+  initMap();
+  allDong = await fetchJSON('/api/dong');
+  populateGuFilter(allDong);
+  renderMarkers(allDong);
+  document.getElementById('guFilter').addEventListener('change', applyFilters);
+  document.getElementById('typeFilter').addEventListener('change', applyFilters);
+  document.querySelectorAll('.quad').forEach(q => q.addEventListener('click', () => highlightQuadrant(q.dataset.type)));
+
+  await loadSummary();
+  await loadEntropy();
+  await loadRegression();
+  await loadInsights();
+  document.getElementById('lastUpdated').textContent = `총 ${allDong.length}개 읍면동 · 2026년 자료 기준`;
+}
+main();
+</script>
+</body>
+</html>
