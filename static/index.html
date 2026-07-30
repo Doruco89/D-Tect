@@ -221,6 +221,22 @@
       .kpi .value.na {
         color: var(--c-full);
       }
+      .kpi .sub-note {
+        font-size: 10.5px;
+        color: var(--sub);
+        margin-top: 3px;
+      }
+      .callout-note {
+        background: #fff3e0;
+        border-left: 3px solid var(--accent);
+        padding: 8px 12px;
+        border-radius: 3px;
+        color: var(--ink) !important;
+      }
+      .callout-note b {
+        color: var(--accent);
+        font-family: var(--mono);
+      }
       .kpi.clickable {
         cursor: pointer;
         transition: background 0.15s ease;
@@ -562,8 +578,9 @@
               <div class="value na" id="kpi-blank">–</div>
             </div>
             <div class="kpi">
-              <div class="label">평균 커버율</div>
+              <div class="label">커버율 (중앙값)</div>
               <div class="value" id="kpi-cover">–</div>
+              <div class="sub-note" id="kpi-cover-sub">–</div>
             </div>
             <div class="kpi">
               <div class="label">평균 충원율</div>
@@ -576,6 +593,11 @@
             시설 품질·안전·접근성 등 다양할 수 있으며, 정량 데이터만으로
             단정하지 않습니다.
           </p>
+          <p
+            class="diag-line callout-note"
+            id="coverageInsight"
+            style="margin-top: 10px"
+          ></p>
           <div id="blankDetail">
             <h4>완전공백 지역 상세</h4>
             <div id="blankList"></div>
@@ -804,6 +826,12 @@
         applyFilters();
       }
 
+      function median(arr) {
+        const s = arr.slice().sort((a, b) => a - b);
+        const mid = Math.floor(s.length / 2);
+        return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+      }
+
       async function loadSummary() {
         const s = await fetchJSON("/api/summary");
         document.getElementById("kpi-total").textContent = s.total_dong;
@@ -819,14 +847,50 @@
         const validGu = s.district_summary.filter(
           (d) => d.평균_전체커버율 != null,
         );
-        const avgCover =
-          validGu.reduce((a, d) => a + d.평균_전체커버율, 0) / validGu.length;
         const avgFill =
           validGu.reduce((a, d) => a + d.평균_전체충원율, 0) / validGu.length;
-        document.getElementById("kpi-cover").textContent =
-          (avgCover * 100).toFixed(1) + "%";
         document.getElementById("kpi-fill").textContent =
           (avgFill * 100).toFixed(1) + "%";
+
+        // 커버율은 학원 밀집 지역의 극단값에 크게 흔들리므로 평균 대신 중앙값을 사용.
+        // 통합_커버율(학원 제외, 돌봄시설만)도 함께 계산해 급등 현상 자체를 인사이트로 노출.
+        const nonGunwi = allDong.filter((r) => r.시군구명 !== "군위군");
+        const covers = nonGunwi
+          .map((r) => r.전체_커버율)
+          .filter((v) => v != null);
+        const integratedCovers = nonGunwi
+          .map((r) => r.통합_커버율)
+          .filter((v) => v != null);
+        const medCover = median(covers);
+        const medIntegrated = median(integratedCovers);
+
+        document.getElementById("kpi-cover").textContent =
+          (medCover * 100).toFixed(1) + "%";
+        document.getElementById("kpi-cover-sub").textContent =
+          integratedCovers.length
+            ? `학원 제외 시 중앙값 ${(medIntegrated * 100).toFixed(1)}%`
+            : "";
+
+        let maxGapDong = null,
+          maxGap = -Infinity;
+        nonGunwi.forEach((r) => {
+          if (r.전체_커버율 != null && r.통합_커버율 != null) {
+            const gap = r.전체_커버율 - r.통합_커버율;
+            if (gap > maxGap) {
+              maxGap = gap;
+              maxGapDong = r;
+            }
+          }
+        });
+        const insightEl = document.getElementById("coverageInsight");
+        if (insightEl && maxGapDong) {
+          insightEl.innerHTML =
+            `학원 정원을 포함하면 커버율이 급등하는 지역이 있습니다 — 예: ` +
+            `<b>${maxGapDong.시군구명} ${maxGapDong.읍면동명}</b>은 돌봄시설만 보면 커버율 ` +
+            `${(maxGapDong.통합_커버율 * 100).toFixed(1)}%이지만, 학원까지 더하면 ` +
+            `${(maxGapDong.전체_커버율 * 100).toFixed(1)}%로 뛰어오릅니다. ` +
+            `그래서 위 "커버율" 지표는 평균 대신 극단값에 덜 흔들리는 중앙값을 사용합니다.`;
+        }
       }
 
       async function loadEntropy() {
